@@ -1,0 +1,23 @@
+{
+  "name": "slp-coctail",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KStasi/slp-coctail.git"
+  },
+  "keywords": [
+    "bch",
+    "slp"
+  ],
+  "author": "KStasi",
+  "dependencies": {
+    "bitbox-sdk": "^8.11.2",
+    "bitcore-lib-cash": "^8.22.2",
+    "slpjs": "^0.27.4"
+  }
+}
