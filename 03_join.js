@@ -1,6 +1,7 @@
 // imports
 const BigNumber = require("bignumber.js");
 const BCHJS = require("@psf/bch-js");
+const slpMdm = require("slp-mdm");
 
 // network
 const NETWORK = `testnet`;
@@ -13,13 +14,12 @@ let bchjs = new BCHJS({
 // accounts
 const walletName0 = process.argv[2] || "account0.json";
 const walletName1 = process.argv[3] || "account1.json";
-const receiverWalletName = process.argv[4] || "account1.json";
+const receiverWalletName0 = process.argv[4] || "account2.json";
+const receiverWalletName1 = process.argv[4] || "account3.json";
 const walletInfo0 = require("./" + walletName0);
 const walletInfo1 = require("./" + walletName1);
-const receiverInfo = require("./" + receiverWalletName);
-const receiverSlpAddress = bchjs.SLP.Address.toSLPAddress(
-  receiverInfo.cashAddress
-);
+const receiverInfo0 = require("./" + receiverWalletName0);
+const receiverInfo1 = require("./" + receiverWalletName1);
 
 // token
 const TOKENQTY = 1;
@@ -36,19 +36,19 @@ async function prepareTransaction(
   let insInfo = cashAddresses.reduce((a, b) => ((a[b] = []), a), {});
   let addOpRet = true;
   let reminders = [];
+  let commonTokenUtxo = [];
+  let changes = [];
   let ix = 0;
   for (let i = 0; i < cashAddresses.length; i++) {
     let cashAddress = cashAddresses[i];
-    let receiverSlpAddress = receiverSlpAddresses[i];
+
     // fetch all utxo
     const data = await bchjs.Electrumx.utxo(cashAddress);
     const utxos = data.utxos;
-    // console.log(`utxos: ${JSON.stringify(utxos, null, 2)}`);
 
     if (utxos.length === 0) throw new Error("No UTXOs to spend! Exiting.");
 
     let allUtxos = await bchjs.SLP.Utils.tokenUtxoDetails(utxos);
-    // console.log(`tokenUtxos: ${JSON.stringify(allUtxos, null, 2)}`);
 
     // filter bch utxos
     const bchUtxos = utxos.filter((utxo, index) => {
@@ -66,21 +66,22 @@ async function prepareTransaction(
         return true;
       }
     });
-
     if (tokenUtxos.length === 0) {
       throw new Error("No token UTXOs for the specified token could be found.");
     }
 
-    // Generate the OP_RETURN code.
-    const slpSendObj = bchjs.SLP.TokenType1.generateSendOpReturn(
-      tokenUtxos,
-      amount
-    );
-    const slpData = slpSendObj.script;
+    // collect all tokens
+    commonTokenUtxo = commonTokenUtxo.concat(tokenUtxos);
+
+    // calculate token change
+    let totalTokens = 0;
+    for (let i = 0; i < tokenUtxos.length; i++)
+      totalTokens += tokenUtxos[i].tokenQty;
+    const change = totalTokens - amount;
+    changes.push(change);
 
     // find bch utxo for fee
     const bchUtxo = findUtxo(bchUtxos, txFee);
-    // console.log(`bchUtxo: ${JSON.stringify(bchUtxo, null, 2)}`);
 
     // add inputs
     transactionBuilder.addInput(bchUtxo.tx_hash, bchUtxo.tx_pos);
@@ -89,34 +90,76 @@ async function prepareTransaction(
       transactionBuilder.addInput(tokenUtxos[i].tx_hash, tokenUtxos[i].tx_pos);
       insInfo[cashAddress].push({ index: ix++, amount: tokenUtxos[i].value });
     }
-    // add OP_RETURN
-    if (addOpRet) {
-      transactionBuilder.addOutput(slpData, 0);
-      addOpRet = false;
-    }
 
-    // add outouts
-    transactionBuilder.addOutput(
-      bchjs.SLP.Address.toLegacyAddress(receiverSlpAddress),
-      546
-    );
-    if (slpSendObj.outputs > 1) {
-      transactionBuilder.addOutput(
-        bchjs.SLP.Address.toLegacyAddress(cashAddress),
-        546
-      );
-    }
+    // calculate BCH change
     reminders.push([
       bchjs.Address.toLegacyAddress(cashAddress),
       bchUtxo.value - txFee,
     ]);
   }
 
+  // generate op return script
+  const slpSendObj = generateSendOpReturn(
+    commonTokenUtxo,
+    Array(receiverSlpAddresses.length).fill(amount).concat(changes)
+  );
+  const slpData = slpSendObj.script;
+
+  // add OP_RETURN
+  transactionBuilder.addOutput(slpData, 0);
+  addOpRet = false;
+
+  // add outouts to receivers
+  receiverSlpAddresses.forEach((receiverSlpAddress) => {
+    transactionBuilder.addOutput(
+      bchjs.SLP.Address.toLegacyAddress(receiverSlpAddress),
+      546
+    );
+  });
+
+  // add outouts with token change
+  cashAddresses.forEach((cashAddress) => {
+    transactionBuilder.addOutput(
+      bchjs.SLP.Address.toLegacyAddress(cashAddress),
+      546
+    );
+  });
+
+  // add outouts with BCH change
   reminders.forEach((reminder) => {
     transactionBuilder.addOutput(reminder[0], reminder[1]);
   });
-  // console.log(JSON.stringify(transactionBuilder, null, 2));
   return [transactionBuilder, insInfo];
+}
+
+function generateSendOpReturn(tokenUtxos, sendQtys) {
+  try {
+    const tokenId = tokenUtxos[0].tokenId;
+    const decimals = tokenUtxos[0].decimals;
+
+    let totalTokens = 0;
+    let sendQty = 0;
+    for (let i = 0; i < tokenUtxos.length; i++)
+      totalTokens += tokenUtxos[i].tokenQty;
+    for (let i = 0; i < sendQtys.length; i++) sendQty += sendQtys[i];
+
+    let script;
+    let amounts = [];
+    sendQtys.forEach((sendQty) => {
+      let baseQty = new BigNumber(sendQty).times(10 ** decimals);
+      baseQty = baseQty.absoluteValue();
+      baseQty = Math.floor(baseQty);
+      baseQty = baseQty.toString();
+      amounts.push(new slpMdm.BN(baseQty));
+    });
+
+    script = slpMdm.TokenType1.send(tokenId, amounts);
+
+    return { script, outputs: sendQtys.length };
+  } catch (err) {
+    console.log(`Error in generateSendOpReturn()`);
+    throw err;
+  }
 }
 
 function signTransaction(transactionBuilder, keyPair, insInfo) {
@@ -137,7 +180,7 @@ async function joinTokens() {
   try {
     let [transactionBuilder, insInfo] = await prepareTransaction(
       [walletInfo0.cashAddress, walletInfo1.cashAddress],
-      [walletInfo1.cashAddress, walletInfo0.cashAddress],
+      [receiverInfo0.cashAddress, receiverInfo1.cashAddress],
       TOKENQTY,
       TOKENID,
       250 + 546 * 2
@@ -149,7 +192,7 @@ async function joinTokens() {
       keyPair0,
       insInfo[walletInfo0.cashAddress]
     );
-    // console.log(JSON.stringify(transactionBuilder, null, 2));
+
     transactionBuilder = signTransaction(
       transactionBuilder,
       keyPair1,
@@ -157,16 +200,16 @@ async function joinTokens() {
     );
 
     const tx = transactionBuilder.build();
-    // output rawhex
     const hex = tx.toHex();
     console.log(`Transaction raw hex: `, hex);
 
     const txidStr = await bchjs.RawTransactions.sendRawTransaction([hex]);
     console.log(`Transaction ID: ${txidStr}`);
-    console.log("Check the status of your transaction on this block explorer:");
-    if (NETWORK === "testnet") {
-      console.log(`https://explorer.bitcoin.com/tbch/tx/${txidStr}`);
-    } else console.log(`https://explorer.bitcoin.com/bch/tx/${txidStr}`);
+    console.log(
+      `https://explorer.bitcoin.com/${
+        NETWORK === "testnet" ? "tbch" : "tbch"
+      }/tx/${txidStr}`
+    );
   } catch (err) {
     console.error("Error in sendToken: ", err);
     console.log(`Error message: ${err.message}`);
