@@ -34,6 +34,7 @@ async function prepareTransaction(
 ) {
   let transactionBuilder = new bchjs.TransactionBuilder(NETWORK);
   let addOpRet = true;
+  let reminders = [];
   for (let i = 0; i < cashAddresses.length; i++) {
     let cashAddress = cashAddresses[i];
     let receiverSlpAddress = receiverSlpAddresses[i];
@@ -101,11 +102,15 @@ async function prepareTransaction(
         546
       );
     }
-    transactionBuilder.addOutput(
+    reminders.push([
       bchjs.Address.toLegacyAddress(cashAddress),
-      bchUtxo.value - txFee
-    );
+      bchUtxo.value - txFee,
+    ]);
   }
+
+  reminders.forEach((reminder) => {
+    transactionBuilder.addOutput(reminder[0], reminder[1]);
+  });
   console.log(JSON.stringify(transactionBuilder, null, 2));
 }
 
