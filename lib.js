@@ -191,5 +191,14 @@ class CoinJoin {
     }
     throw new Error(`Wallet does not have a BCH UTXO to pay.`);
   }
+  async getBCHBalance(cashAddress) {
+    try {
+      const balance = await this.bchjs.Electrumx.balance(cashAddress);
+
+      return balance;
+    } catch (err) {
+      throw err;
+    }
+  }
 }
 module.exports = CoinJoin;
