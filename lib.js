@@ -200,5 +200,14 @@ class CoinJoin {
       throw err;
     }
   }
+
+  async getSLPBalance(slpAddress) {
+    try {
+      const tokens = await this.bchjs.SLP.Utils.balancesForAddress(slpAddress);
+      return tokens;
+    } catch (err) {
+      throw err;
+    }
+  }
 }
 module.exports = CoinJoin;
