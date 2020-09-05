@@ -33,8 +33,10 @@ async function prepareTransaction(
   txFee
 ) {
   let transactionBuilder = new bchjs.TransactionBuilder(NETWORK);
+  let insInfo = cashAddresses.reduce((a, b) => ((a[b] = []), a), {});
   let addOpRet = true;
   let reminders = [];
+  let ix = 0;
   for (let i = 0; i < cashAddresses.length; i++) {
     let cashAddress = cashAddresses[i];
     let receiverSlpAddress = receiverSlpAddresses[i];
@@ -82,8 +84,10 @@ async function prepareTransaction(
 
     // add inputs
     transactionBuilder.addInput(bchUtxo.tx_hash, bchUtxo.tx_pos);
+    insInfo[cashAddress].push({ index: ix++, amount: bchUtxo.value });
     for (let i = 0; i < tokenUtxos.length; i++) {
       transactionBuilder.addInput(tokenUtxos[i].tx_hash, tokenUtxos[i].tx_pos);
+      insInfo[cashAddress].push({ index: ix++, amount: tokenUtxos[i].value });
     }
     // add OP_RETURN
     if (addOpRet) {
@@ -111,52 +115,58 @@ async function prepareTransaction(
   reminders.forEach((reminder) => {
     transactionBuilder.addOutput(reminder[0], reminder[1]);
   });
-  console.log(JSON.stringify(transactionBuilder, null, 2));
+  // console.log(JSON.stringify(transactionBuilder, null, 2));
+  return [transactionBuilder, insInfo];
+}
+
+function signTransaction(transactionBuilder, keyPair, insInfo) {
+  insInfo.forEach((inInfo) => {
+    let redeemScript;
+    transactionBuilder.sign(
+      inInfo.index,
+      keyPair,
+      redeemScript,
+      transactionBuilder.hashTypes.SIGHASH_ALL,
+      inInfo.amount
+    );
+  });
+  return transactionBuilder;
 }
 
 async function joinTokens() {
   try {
-    await prepareTransaction(
+    let [transactionBuilder, insInfo] = await prepareTransaction(
       [walletInfo0.cashAddress, walletInfo1.cashAddress],
       [walletInfo1.cashAddress, walletInfo0.cashAddress],
       TOKENQTY,
       TOKENID,
       250 + 546 * 2
     );
+    const keyPair0 = bchjs.ECPair.fromWIF(walletInfo0.WIF);
+    const keyPair1 = bchjs.ECPair.fromWIF(walletInfo1.WIF);
+    transactionBuilder = signTransaction(
+      transactionBuilder,
+      keyPair0,
+      insInfo[walletInfo0.cashAddress]
+    );
+    // console.log(JSON.stringify(transactionBuilder, null, 2));
+    transactionBuilder = signTransaction(
+      transactionBuilder,
+      keyPair1,
+      insInfo[walletInfo1.cashAddress]
+    );
 
-    // // Sign the transaction with the private key for the BCH UTXO paying the fees.
-    // let redeemScript;
-    // transactionBuilder.sign(
-    //   0,
-    //   keyPair,
-    //   redeemScript,
-    //   transactionBuilder.hashTypes.SIGHASH_ALL,
-    //   originalAmount
-    // );
-    // // Sign each token UTXO being consumed.
-    // for (let i = 0; i < tokenUtxos.length; i++) {
-    //   const thisUtxo = tokenUtxos[i];
-    //   transactionBuilder.sign(
-    //     1 + i,
-    //     keyPair,
-    //     redeemScript,
-    //     transactionBuilder.hashTypes.SIGHASH_ALL,
-    //     thisUtxo.value
-    //   );
-    // }
-    // // build tx
-    // const tx = transactionBuilder.build();
-    // // output rawhex
-    // const hex = tx.toHex();
-    // // console.log(`Transaction raw hex: `, hex)
-    // // END transaction construction.
-    // // Broadcast transation to the network
-    // const txidStr = await bchjs.RawTransactions.sendRawTransaction([hex]);
-    // console.log(`Transaction ID: ${txidStr}`);
-    // console.log("Check the status of your transaction on this block explorer:");
-    // if (NETWORK === "testnet") {
-    //   console.log(`https://explorer.bitcoin.com/tbch/tx/${txidStr}`);
-    // } else console.log(`https://explorer.bitcoin.com/bch/tx/${txidStr}`);
+    const tx = transactionBuilder.build();
+    // output rawhex
+    const hex = tx.toHex();
+    console.log(`Transaction raw hex: `, hex);
+
+    const txidStr = await bchjs.RawTransactions.sendRawTransaction([hex]);
+    console.log(`Transaction ID: ${txidStr}`);
+    console.log("Check the status of your transaction on this block explorer:");
+    if (NETWORK === "testnet") {
+      console.log(`https://explorer.bitcoin.com/tbch/tx/${txidStr}`);
+    } else console.log(`https://explorer.bitcoin.com/bch/tx/${txidStr}`);
   } catch (err) {
     console.error("Error in sendToken: ", err);
     console.log(`Error message: ${err.message}`);
