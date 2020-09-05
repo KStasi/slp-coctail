@@ -14,7 +14,7 @@ else bchjs = new BCHJS({ restURL: TESTNET_API_FREE });
 
 const walletInfo = require("./" + walletName);
 const receiverInfo = require("./" + receiverWalletName);
-const TOKENQTY = 1;
+const TOKENQTY = 10;
 const TOKENID =
   "20fdfb9fa450af19716f5b8df8634db594a5327930614ba6cd9f15e179f4913d";
 let TO_SLPADDR = Utils.toSlpAddress(receiverInfo.cashAddress);
