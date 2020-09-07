@@ -75,16 +75,6 @@ const receiverInfo1 = require("./" + receiverWalletName1);
     }
     const bchUtxo = await findUtxo(bchUtxos, totalSpent);
 
-    // collect all tokens
-    commonTokenUtxo = commonTokenUtxo.concat(tokenUtxos);
-
-    // calculate token change
-    let totalTokens = 0;
-    for (let i = 0; i < tokenUtxos.length; i++)
-      totalTokens += tokenUtxos[i].tokenQty;
-    const change = totalTokens - tokenQty;
-    changes.push(change);
-
     // add inputs
     transactionBuilder.addInput(bchUtxo.tx_hash, bchUtxo.tx_pos);
     insInfo[cashAddress].push({ index: ix++, amount: bchUtxo.value });
@@ -93,7 +83,14 @@ const receiverInfo1 = require("./" + receiverWalletName1);
       insInfo[cashAddress].push({ index: ix++, amount: tokenUtxos[i].value });
     }
 
-    // calculate BCH change
+    // collect all outputs
+    commonTokenUtxo = commonTokenUtxo.concat(tokenUtxos);
+    let totalTokens = 0;
+    for (let i = 0; i < tokenUtxos.length; i++) {
+      totalTokens += tokenUtxos[i].tokenQty;
+    }
+    const change = totalTokens - tokenQty;
+    changes.push(change);
     reminders.push([
       bchjs.Address.toLegacyAddress(cashAddress),
       bchUtxo.value - txFee,
@@ -212,6 +209,5 @@ function generateSendOpReturn(tokenUtxos, sendQtys) {
   });
 
   script = slpMdm.TokenType1.send(tokenId, amounts);
-
   return { script, outputs: sendQtys.length };
 }
