@@ -42,16 +42,13 @@ const walletInfo = require("./" + walletName);
 
   // instance of transaction builder
   const transactionBuilder = new bchjs.TransactionBuilder(NETWORK);
-  const originalAmount = utxo.value;
-  const vout = utxo.tx_pos;
-  const txid = utxo.tx_hash;
 
   // add inputs
-  transactionBuilder.addInput(txid, vout);
-  const remainder = originalAmount - totalSpent;
+  transactionBuilder.addInput(utxo.tx_hash, utxo.tx_pos);
+  const remainder = utxo.value - totalSpent;
 
   // add outputs
-  const configObj = {
+  const script = bchjs.SLP.TokenType1.generateGenesisOpReturn({
     name,
     ticker,
     documentUrl,
@@ -59,8 +56,7 @@ const walletInfo = require("./" + walletName);
     initialQty: initialTokenQty,
     documentHash,
     mintBatonVout: 2,
-  };
-  const script = bchjs.SLP.TokenType1.generateGenesisOpReturn(configObj);
+  });
   transactionBuilder.addOutput(script, 0);
   transactionBuilder.addOutput(
     bchjs.Address.toLegacyAddress(cashAddress),
@@ -80,7 +76,7 @@ const walletInfo = require("./" + walletName);
     keyPair,
     redeemScript,
     transactionBuilder.hashTypes.SIGHASH_ALL,
-    originalAmount
+    utxo.value
   );
   const tx = transactionBuilder.build();
   const hex = tx.toHex();
