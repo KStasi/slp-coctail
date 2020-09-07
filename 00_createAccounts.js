@@ -1,13 +1,12 @@
-const BITBOXSDK = require("bitbox-sdk");
 const BCHJS = require("@psf/bch-js");
 const fs = require("fs");
 
 (async () => {
   // configs
+  const walletName = process.argv[2] || "account.json";
   const NETWORK = `testnet`;
   const MAINNET_API_FREE = "https://free-main.fullstack.cash/v3/";
   const TESTNET_API_FREE = "https://free-test.fullstack.cash/v3/";
-  const walletName = process.argv[2] || "account.json";
   const bchjs = new BCHJS({
     restURL: NETWORK === "mainnet" ? MAINNET_API_FREE : TESTNET_API_FREE,
   });
@@ -26,9 +25,8 @@ const fs = require("fs");
     legacyAddress: bchjs.HDNode.toLegacyAddress(childNode),
     WIF: bchjs.HDNode.toWIF(childNode),
   };
-
   fs.writeFile(walletName, JSON.stringify(outObj, null, 2), function (err) {
     if (err) return console.error(err);
-    console.log("wallet.json written successfully.");
+    console.log(`${walletName} written successfully.`);
   });
 })();
