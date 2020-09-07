@@ -58,19 +58,17 @@ const receiverInfo = require("./" + receiverWalletName);
   if (tokenUtxos.length === 0) {
     throw new Error("No token UTXOs for the specified token could be found.");
   }
-
   const bchUtxo = await findUtxo(utxos, totalSpent);
-
-  const slpSendObj = bchjs.SLP.TokenType1.generateSendOpReturn(
-    tokenUtxos,
-    tokenQty
-  );
-  const slpData = slpSendObj.script;
 
   // instance of transaction builder
   const transactionBuilder = new bchjs.TransactionBuilder(NETWORK);
 
   // add inputs
+  const slpSendObj = bchjs.SLP.TokenType1.generateSendOpReturn(
+    tokenUtxos,
+    tokenQty
+  );
+  const slpData = slpSendObj.script;
   transactionBuilder.addInput(bchUtxo.tx_hash, bchUtxo.tx_pos);
   for (let i = 0; i < tokenUtxos.length; i++) {
     transactionBuilder.addInput(tokenUtxos[i].tx_hash, tokenUtxos[i].tx_pos);
