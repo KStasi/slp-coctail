@@ -1,4 +1,3 @@
-const BigNumber = require("bignumber.js");
 const BCHJS = require("@psf/bch-js");
 let Utils = require("slpjs").Utils;
 
@@ -58,29 +57,28 @@ const receiverInfo = require("./" + receiverWalletName);
   if (tokenUtxos.length === 0) {
     throw new Error("No token UTXOs for the specified token could be found.");
   }
-  const bchUtxo = await findUtxo(utxos, totalSpent);
+  const bchUtxo = await findUtxo(bchUtxos, totalSpent);
 
   // instance of transaction builder
   const transactionBuilder = new bchjs.TransactionBuilder(NETWORK);
 
   // add inputs
-  const slpSendObj = bchjs.SLP.TokenType1.generateSendOpReturn(
-    tokenUtxos,
-    tokenQty
-  );
-  const slpData = slpSendObj.script;
   transactionBuilder.addInput(bchUtxo.tx_hash, bchUtxo.tx_pos);
   for (let i = 0; i < tokenUtxos.length; i++) {
     transactionBuilder.addInput(tokenUtxos[i].tx_hash, tokenUtxos[i].tx_pos);
   }
 
+  // add outputs
   const remainder = bchUtxo.value - totalSpent;
   if (remainder < 1) {
     throw new Error("Selected UTXO does not have enough satoshis");
   }
-
-  // add outputs
-  transactionBuilder.addOutput(slpData, 0);
+  const slpSendObj = bchjs.SLP.TokenType1.generateSendOpReturn(
+    tokenUtxos,
+    tokenQty
+  );
+  const script = slpSendObj.script;
+  transactionBuilder.addOutput(script, 0);
   transactionBuilder.addOutput(
     bchjs.SLP.Address.toLegacyAddress(receiverAddress),
     dustPerOutput
